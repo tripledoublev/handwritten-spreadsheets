@@ -1,8 +1,8 @@
-# 📋 Handwritten Spreadsheet to CSV
+# Handwritten Spreadsheet to CSV
 
 Convert handwritten spreadsheet images to structured CSV data using AI vision models.
 
-## ✨ Features
+## What it does?
 
 - **Image Upload**: Support for various image formats (PNG, JPG, etc.)
 - **AI-Powered Extraction**: Uses Ollama's llama3.2-vision model for accurate text recognition
@@ -12,7 +12,7 @@ Convert handwritten spreadsheet images to structured CSV data using AI vision mo
 - **CSV Export**: Save and download results as CSV files
 - **Ollama Integration**: Built-in status checking and custom endpoint configuration
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -46,7 +46,7 @@ Convert handwritten spreadsheet images to structured CSV data using AI vision mo
 
 5. **Open your browser** to `http://127.0.0.1:5000`
 
-## 📖 Usage
+## Usage
 
 1. **Check Ollama Status**: The app will automatically detect if Ollama is running
 2. **Upload Image**: Select a photo of your handwritten spreadsheet
@@ -57,7 +57,7 @@ Convert handwritten spreadsheet images to structured CSV data using AI vision mo
 7. **Save to CSV**: Click "Save Rows to CSV" to append data to your CSV file
 8. **Download**: Use "Download CSV" to get your complete dataset
 
-## 🛠️ Configuration
+## Configuration
 
 ### Custom Ollama Endpoint
 
@@ -81,7 +81,7 @@ handwritten-spreadsheets/
     └── photo-to-csv.py   # Original script
 ```
 
-## 🔧 API Endpoints
+## API Endpoints
 
 - `GET /` - Serve web interface
 - `GET /ollama-status` - Check Ollama connectivity
@@ -89,7 +89,7 @@ handwritten-spreadsheets/
 - `POST /save` - Save extracted data to CSV
 - `GET /download` - Download current CSV file
 
-## 💡 Tips for Best Results
+## Tips for Best Results
 
 - **Image Quality**: Use high-resolution, well-lit photos
 - **Clear Handwriting**: Ensure text is legible
@@ -97,7 +97,7 @@ handwritten-spreadsheets/
 - **Column Headers**: Be specific with column names for better mapping
 - **Additional Instructions**: Mention any special formatting or context
 
-## 🐛 Troubleshooting
+## Troubleshooting
 
 ### Ollama Connection Issues
 - Ensure Ollama is installed and running (`ollama serve`)
@@ -114,7 +114,7 @@ handwritten-spreadsheets/
 - Check the `data/` directory for the results.csv file
 - Ensure write permissions in the project directory
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -122,11 +122,11 @@ handwritten-spreadsheets/
 4. Test it
 5. Submit a pull request
 
-## 📄 License
+## License
 
 This project is open source. Feel free to use and modify as needed.
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Built with [Flask](https://flask.palletsprojects.com/)
 - Powered by [Ollama](https://ollama.com/) and [llama3.2-vision](https://ollama.com/library/llama3.2-vision)
