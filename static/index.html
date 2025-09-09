@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Handwritten Spreadsheet to CSV</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="file"], input[type="text"], textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 80px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .save-btn {
+            background-color: #28a745;
+        }
+        .save-btn:hover {
+            background-color: #1e7e34;
+        }
+        .download-btn {
+            background-color: #17a2b8;
+        }
+        .download-btn:hover {
+            background-color: #138496;
+        }
+        #preview {
+            margin-top: 30px;
+            padding: 20px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            display: none;
+        }
+        #previewTable {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        #previewTable th, #previewTable td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        #previewTable th {
+            background-color: #e9ecef;
+            font-weight: bold;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .success {
+            color: #155724;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .ollama-status {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        .status-running {
+            border-color: #28a745;
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status-offline {
+            border-color: #dc3545;
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        .status-running .status-indicator {
+            background-color: #28a745;
+        }
+        .status-offline .status-indicator {
+            background-color: #dc3545;
+        }
+        .ollama-config {
+            margin-top: 10px;
+        }
+        .ollama-config input {
+            width: 200px;
+            margin-right: 10px;
+        }
+        .ollama-config button {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📋 Handwritten Spreadsheet to CSV</h1>
+        
+        <div id="ollamaStatus" class="ollama-status">
+            <div><span class="status-indicator"></span><span id="statusText">Checking Ollama status...</span></div>
+            <div class="ollama-config" id="ollamaConfig" style="display: none;">
+                <input type="text" id="customHost" placeholder="http://localhost:11434" value="http://localhost:11434">
+                <button id="testConnection">Test Connection</button>
+                <div style="margin-top: 5px; font-size: 12px;">
+                    <a href="https://ollama.ai/download" target="_blank">Download Ollama</a> if not installed
+                </div>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="imageInput">Upload Spreadsheet Image:</label>
+            <input type="file" id="imageInput" accept="image/*" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="columnsInput">Spreadsheet Headers (comma-separated):</label>
+            <input type="text" id="columnsInput" placeholder="name,email,phone,notes" required>
+        </div>
+        
+        <div class="form-group">
+            <label for="instructionsInput">Additional Instructions (optional):</label>
+            <textarea id="instructionsInput" placeholder="Any specific instructions for data extraction..."></textarea>
+        </div>
+        
+        <button id="extractBtn">Extract Data</button>
+        <button id="saveBtn" class="save-btn" disabled>Save Rows to CSV</button>
+        <button id="downloadBtn" class="download-btn">Download CSV</button>
+        
+        <div id="status"></div>
+        
+        <div id="preview">
+            <h3>Preview:</h3>
+            <div id="jsonPreview"></div>
+            <table id="previewTable"></table>
+        </div>
+    </div>
+
+    <script>
+        let extractedData = null;
+        let currentOllamaHost = 'http://localhost:11434';
+
+        const imageInput = document.getElementById('imageInput');
+        const columnsInput = document.getElementById('columnsInput');
+        const instructionsInput = document.getElementById('instructionsInput');
+        const extractBtn = document.getElementById('extractBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const downloadBtn = document.getElementById('downloadBtn');
+        const status = document.getElementById('status');
+        const preview = document.getElementById('preview');
+        const jsonPreview = document.getElementById('jsonPreview');
+        const previewTable = document.getElementById('previewTable');
+        const ollamaStatus = document.getElementById('ollamaStatus');
+        const statusText = document.getElementById('statusText');
+        const ollamaConfig = document.getElementById('ollamaConfig');
+        const customHost = document.getElementById('customHost');
+        const testConnection = document.getElementById('testConnection');
+
+        function showStatus(message, type = 'info') {
+            status.innerHTML = `<div class="${type}">${message}</div>`;
+        }
+
+        function clearStatus() {
+            status.innerHTML = '';
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        async function checkOllamaStatus(host = 'http://localhost:11434') {
+            try {
+                const response = await fetch(`/ollama-status?host=${encodeURIComponent(host)}`);
+                const result = await response.json();
+                
+                ollamaStatus.className = `ollama-status status-${result.status === 'running' ? 'running' : 'offline'}`;
+                statusText.textContent = result.message;
+                
+                if (result.status === 'running') {
+                    ollamaConfig.style.display = 'none';
+                    currentOllamaHost = host;
+                    extractBtn.disabled = false;
+                } else {
+                    ollamaConfig.style.display = 'block';
+                    extractBtn.disabled = true;
+                }
+                
+                return result.status === 'running';
+            } catch (error) {
+                ollamaStatus.className = 'ollama-status status-offline';
+                statusText.textContent = 'Failed to check Ollama status';
+                ollamaConfig.style.display = 'block';
+                extractBtn.disabled = true;
+                return false;
+            }
+        }
+
+        function renderTable(data) {
+            if (!data || data.length === 0) {
+                previewTable.innerHTML = '<tr><td>No data extracted</td></tr>';
+                return;
+            }
+
+            const headers = Object.keys(data[0]);
+            let html = '<thead><tr>';
+            headers.forEach(header => {
+                html += `<th>${header}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+
+            data.forEach(row => {
+                html += '<tr>';
+                headers.forEach(header => {
+                    html += `<td>${row[header] || ''}</td>`;
+                });
+                html += '</tr>';
+            });
+            html += '</tbody>';
+
+            previewTable.innerHTML = html;
+        }
+
+        extractBtn.addEventListener('click', async () => {
+            const file = imageInput.files[0];
+            const columns = columnsInput.value.trim();
+            const instructions = instructionsInput.value.trim();
+
+            if (!file) {
+                showStatus('Please select an image file', 'error');
+                return;
+            }
+
+            if (!columns) {
+                showStatus('Please enter column headers', 'error');
+                return;
+            }
+
+            try {
+                extractBtn.disabled = true;
+                showStatus('Extracting data from image...', 'loading');
+
+                const base64 = await fileToBase64(file);
+
+                const response = await fetch('/extract', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        image: base64,
+                        columns: columns,
+                        instructions: instructions,
+                        ollama_host: currentOllamaHost
+                    })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to extract data');
+                }
+
+                extractedData = result;
+                
+                // Show preview
+                jsonPreview.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+                renderTable(result.data);
+                preview.style.display = 'block';
+                
+                saveBtn.disabled = false;
+                showStatus(`Extracted ${result.data ? result.data.length : 0} rows`, 'success');
+
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+                extractedData = null;
+                saveBtn.disabled = true;
+                preview.style.display = 'none';
+            } finally {
+                extractBtn.disabled = false;
+            }
+        });
+
+        saveBtn.addEventListener('click', async () => {
+            if (!extractedData || !extractedData.data) {
+                showStatus('No data to save', 'error');
+                return;
+            }
+
+            try {
+                saveBtn.disabled = true;
+                showStatus('Saving to CSV...', 'loading');
+
+                const response = await fetch('/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(extractedData)
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result.error || 'Failed to save data');
+                }
+
+                showStatus(result.message, 'success');
+
+            } catch (error) {
+                showStatus(`Error: ${error.message}`, 'error');
+            } finally {
+                saveBtn.disabled = false;
+            }
+        });
+
+        downloadBtn.addEventListener('click', () => {
+            window.open('/download', '_blank');
+        });
+
+        testConnection.addEventListener('click', async () => {
+            const host = customHost.value.trim();
+            if (!host) {
+                showStatus('Please enter a valid host', 'error');
+                return;
+            }
+            
+            testConnection.disabled = true;
+            statusText.textContent = 'Testing connection...';
+            
+            await checkOllamaStatus(host);
+            testConnection.disabled = false;
+        });
+
+        // Check Ollama status on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            checkOllamaStatus();
+        });
+    </script>
+</body>
+</html>
