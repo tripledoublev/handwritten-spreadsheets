@@ -46,6 +46,19 @@ Convert handwritten spreadsheet images to structured CSV data using AI vision mo
 
 5. **Open your browser** to `http://127.0.0.1:5000`
 
+#### Docker alternative
+
+```
+# To start the app
+docker compose up --build -d
+
+# Downloads the llama3.2-vision model to your ./models folder (~7.8 GB)
+docker exec ollama ollama pull llama3.2-vision
+
+# To stop the app
+docker compose down
+```
+
 ## Usage
 
 1. **Check Ollama Status**: The app will automatically detect if Ollama is running
@@ -79,6 +92,7 @@ handwritten-spreadsheets/
 │   └── results.csv       # Output CSV file (auto-created)
 └── archive/
     └── photo-to-csv.py   # Original script
+└── ollama/               # Ollama model files
 ```
 
 ## API Endpoints

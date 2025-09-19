@@ -11,7 +11,7 @@ from datetime import datetime
 app = Flask(__name__)
 
 # Default Ollama configuration
-OLLAMA_HOST = 'http://localhost:11434'
+OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
 
 @app.route('/')
 def index():
@@ -165,4 +165,5 @@ def download():
         return jsonify({'error': 'No CSV file found'}), 404
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    HOST = os.getenv("HOST", "127.0.0.1")
+    app.run(debug=True, host=HOST)
