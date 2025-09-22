@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_file
 import ollama
 import json
 import csv
@@ -15,7 +15,7 @@ OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
 
 @app.route('/')
 def index():
-    return send_from_directory('static', 'index.html')
+    return render_template('index.html', ollama_host=OLLAMA_HOST)
 
 @app.route('/ollama-status')
 def ollama_status():

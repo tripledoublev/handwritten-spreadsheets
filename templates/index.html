@@ -166,7 +166,7 @@
         <div id="ollamaStatus" class="ollama-status">
             <div><span class="status-indicator"></span><span id="statusText">Checking Ollama status...</span></div>
             <div class="ollama-config" id="ollamaConfig" style="display: none;">
-                <input type="text" id="customHost" placeholder="http://localhost:11434" value="http://localhost:11434">
+                <input type="text" id="customHost" placeholder="{{ ollama_host }}" value="{{ ollama_host }}">
                 <button id="testConnection">Test Connection</button>
                 <div style="margin-top: 5px; font-size: 12px;">
                     <a href="https://ollama.ai/download" target="_blank">Download Ollama</a> if not installed
@@ -204,7 +204,7 @@
 
     <script>
         let extractedData = null;
-        let currentOllamaHost = 'http://localhost:11434';
+        let currentOllamaHost = '{{ ollama_host }}';
 
         const imageInput = document.getElementById('imageInput');
         const columnsInput = document.getElementById('columnsInput');
@@ -239,7 +239,7 @@
             });
         }
 
-        async function checkOllamaStatus(host = 'http://localhost:11434') {
+        async function checkOllamaStatus(host = '{{ ollama_host }}') {
             try {
                 const response = await fetch(`/ollama-status?host=${encodeURIComponent(host)}`);
                 const result = await response.json();
