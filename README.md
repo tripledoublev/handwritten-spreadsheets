@@ -19,12 +19,15 @@ Convert handwritten spreadsheet images to structured CSV data using AI vision mo
 
 ### Prerequisites
 
-1. **Python 3.7+**
-2. **Ollama** with a vision model
+1. **Python 3.7+** (for local setup)
+2. **Docker & Docker Compose** (for Docker setup)
+3. **Ollama** with a vision model
    - [Download Ollama](https://ollama.com/download)
    - Install a vision model: `ollama pull qwen2.5vl:7b` (recommended) or `ollama pull llama3.2-vision`
 
-### Installation
+## Setup Options
+
+### Option 1: Local Development Setup
 
 1. **Clone the repository**
    ```bash
@@ -48,6 +51,44 @@ Convert handwritten spreadsheet images to structured CSV data using AI vision mo
    ```
 
 5. **Open your browser** to `http://127.0.0.1:5000`
+
+### Option 2: Docker Setup
+
+1. **Clone the repository**
+   ```bash
+   git clone https://github.com/tripledoublev/handwritten-spreadsheets.git
+   cd handwritten-spreadsheets
+   ```
+
+2. **Configure environment** (optional)
+   ```bash
+   cp env.example .env
+   # Edit .env file to customize Ollama settings if needed
+   ```
+
+3. **Start the application**
+   ```bash
+   docker compose up --build -d
+   ```
+
+4. **Download the vision model** (first time only)
+   ```bash
+   # This downloads the llama3.2-vision model (~7.8 GB)
+   docker exec -it handwritten-spreadsheets-app-1 ollama pull llama3.2-vision
+   ```
+
+5. **Open your browser** to `http://127.0.0.1:5000`
+
+6. **Stop the application**
+   ```bash
+   docker compose down
+   ```
+
+#### Docker Benefits
+- **Isolated Environment**: No need to install Python dependencies locally
+- **Consistent Setup**: Same environment across different machines
+- **Easy Cleanup**: Remove containers to clean up completely
+- **Production Ready**: Same setup used in production deployments
 
 ## Usage
 
@@ -99,12 +140,16 @@ If Ollama is running on a different host/port:
 handwritten-spreadsheets/
 ├── app.py                 # Flask backend
 ├── requirements.txt       # Python dependencies
-├── static/
+├── Dockerfile            # Docker container configuration
+├── docker-compose.yaml   # Docker Compose configuration
+├── env.example           # Environment variables template
+├── templates/
 │   └── index.html        # Web interface
 ├── data/
 │   └── results.csv       # Output CSV file (auto-created)
-└── archive/
-    └── photo-to-csv.py   # Original script
+├── archive/
+│   └── photo-to-csv.py   # Original script
+└── ollama/               # Ollama model files (Docker setup)
 ```
 
 ## API Endpoints
@@ -148,6 +193,14 @@ handwritten-spreadsheets/
 ### CSV Output Issues
 - Check the `data/` directory for the results.csv file
 - Ensure write permissions in the project directory
+
+### Docker Issues
+- **Container won't start**: Check Docker is running and ports 5000 is available
+- **Model download fails**: Ensure sufficient disk space (~8GB for llama3.2-vision)
+- **Permission errors**: On Linux, you may need to run `sudo docker compose up`
+- **Port conflicts**: Change the port mapping in docker-compose.yaml if 5000 is in use
+- **Environment variables**: Ensure .env file exists and has correct Ollama settings
+- **Container logs**: Use `docker compose logs` to debug issues
 
 ## Contributing
 

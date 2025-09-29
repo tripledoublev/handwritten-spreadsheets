@@ -1,0 +1,13 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - HOST=0.0.0.0
+      - OLLAMA_HOST=${OLLAMA_HOST}
+      - OLLAMA_USERNAME=${OLLAMA_USERNAME}
+      - OLLAMA_PASSWORD=${OLLAMA_PASSWORD}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}

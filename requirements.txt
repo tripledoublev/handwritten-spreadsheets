@@ -1,4 +1,4 @@
-flask
-ollama
-requests
+flask==3.1.2
+ollama==0.5.4
+requests==2.32.5
 python-dotenv
