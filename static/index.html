@@ -74,6 +74,12 @@
         .download-btn:hover {
             background-color: #138496;
         }
+        .clear-btn {
+            background-color: #6c757d;
+        }
+        .clear-btn:hover {
+            background-color: #545b62;
+        }
         #preview {
             margin-top: 30px;
             padding: 20px;
@@ -94,6 +100,34 @@
         #previewTable th {
             background-color: #e9ecef;
             font-weight: bold;
+        }
+        .low-confidence {
+            background-color: #fff3cd !important;
+            border: 2px solid #ffc107 !important;
+            position: relative;
+        }
+        .low-confidence::after {
+            content: "⚠";
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 12px;
+            color: #856404;
+        }
+        .confidence-tooltip {
+            position: absolute;
+            background-color: #333;
+            color: white;
+            padding: 5px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .confidence-tooltip.show {
+            opacity: 1;
         }
         .error {
             color: #dc3545;
@@ -180,8 +214,12 @@
         </div>
         
         <div class="form-group">
-            <label for="columnsInput">Spreadsheet Headers (comma-separated):</label>
-            <input type="text" id="columnsInput" placeholder="name,email,phone,notes" required>
+            <label for="columnsInput">Spreadsheet Headers (comma-separated, optional):</label>
+            <input type="text" id="columnsInput" placeholder="name,email,phone,notes (leave empty to auto-detect)">
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                <strong>Auto-detect mode:</strong> Leave empty to automatically detect headers from the image<br>
+                <strong>Specify mode:</strong> Enter column names to force specific headers
+            </div>
         </div>
         
         <div class="form-group">
@@ -189,7 +227,27 @@
             <textarea id="instructionsInput" placeholder="Any specific instructions for data extraction..."></textarea>
         </div>
         
+        <div class="form-group">
+            <label for="confidenceThreshold">Confidence Threshold:</label>
+            <input type="range" id="confidenceThreshold" min="0" max="1" step="0.05" value="0.7" style="width: 100%;">
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                Cells with confidence below this threshold will be highlighted for review
+                <span id="thresholdValue">(0.7)</span>
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label for="modelSelect">Model:</label>
+            <select id="modelSelect" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                <option value="">Loading models...</option>
+            </select>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                Select the model to use for OCR processing
+            </div>
+        </div>
+        
         <button id="extractBtn">Extract Data</button>
+        <button id="clearBtn" class="clear-btn">Clear Results</button>
         <button id="saveBtn" class="save-btn" disabled>Save Rows to CSV</button>
         <button id="downloadBtn" class="download-btn">Download CSV</button>
         
@@ -204,12 +262,13 @@
 
     <script>
         let extractedData = null;
-        let currentOllamaHost = 'http://localhost:11434';
+        // Host is handled by backend using environment variables
 
         const imageInput = document.getElementById('imageInput');
         const columnsInput = document.getElementById('columnsInput');
         const instructionsInput = document.getElementById('instructionsInput');
         const extractBtn = document.getElementById('extractBtn');
+        const clearBtn = document.getElementById('clearBtn');
         const saveBtn = document.getElementById('saveBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const status = document.getElementById('status');
@@ -221,6 +280,9 @@
         const ollamaConfig = document.getElementById('ollamaConfig');
         const customHost = document.getElementById('customHost');
         const testConnection = document.getElementById('testConnection');
+        const modelSelect = document.getElementById('modelSelect');
+        const confidenceThreshold = document.getElementById('confidenceThreshold');
+        const thresholdValue = document.getElementById('thresholdValue');
 
         function showStatus(message, type = 'info') {
             status.innerHTML = `<div class="${type}">${message}</div>`;
@@ -239,9 +301,44 @@
             });
         }
 
-        async function checkOllamaStatus(host = 'http://localhost:11434') {
+        async function loadModels() {
             try {
-                const response = await fetch(`/ollama-status?host=${encodeURIComponent(host)}`);
+                const response = await fetch('/ollama-models');
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    modelSelect.innerHTML = '';
+                    
+                    // Add current model option
+                    if (result.current_model) {
+                        const currentOption = document.createElement('option');
+                        currentOption.value = result.current_model;
+                        currentOption.textContent = `${result.current_model} (Current)`;
+                        currentOption.selected = true;
+                        modelSelect.appendChild(currentOption);
+                    }
+                    
+                    // Add all available models
+                    result.models.forEach(model => {
+                        if (model.name !== result.current_model) {
+                            const option = document.createElement('option');
+                            option.value = model.name;
+                            option.textContent = `${model.name} (${(model.size / 1024 / 1024 / 1024).toFixed(1)}GB)`;
+                            modelSelect.appendChild(option);
+                        }
+                    });
+                } else {
+                    modelSelect.innerHTML = '<option value="">Failed to load models</option>';
+                }
+            } catch (error) {
+                modelSelect.innerHTML = '<option value="">Error loading models</option>';
+                console.error('Error loading models:', error);
+            }
+        }
+
+        async function checkOllamaStatus() {
+            try {
+                const response = await fetch('/ollama-status');
                 const result = await response.json();
                 
                 ollamaStatus.className = `ollama-status status-${result.status === 'running' ? 'running' : 'offline'}`;
@@ -249,11 +346,13 @@
                 
                 if (result.status === 'running') {
                     ollamaConfig.style.display = 'none';
-                    currentOllamaHost = host;
                     extractBtn.disabled = false;
+                    // Load models when Ollama is running
+                    await loadModels();
                 } else {
                     ollamaConfig.style.display = 'block';
                     extractBtn.disabled = true;
+                    modelSelect.innerHTML = '<option value="">Ollama not running</option>';
                 }
                 
                 return result.status === 'running';
@@ -262,11 +361,12 @@
                 statusText.textContent = 'Failed to check Ollama status';
                 ollamaConfig.style.display = 'block';
                 extractBtn.disabled = true;
+                modelSelect.innerHTML = '<option value="">Connection failed</option>';
                 return false;
             }
         }
 
-        function renderTable(data) {
+        function renderTable(data, confidenceData = null) {
             if (!data || data.length === 0) {
                 previewTable.innerHTML = '<tr><td>No data extracted</td></tr>';
                 return;
@@ -279,36 +379,80 @@
             });
             html += '</tr></thead><tbody>';
 
-            data.forEach(row => {
+            data.forEach((row, rowIndex) => {
                 html += '<tr>';
                 headers.forEach(header => {
-                    html += `<td>${row[header] || ''}</td>`;
+                    const value = row[header] || '';
+                    const confidence = confidenceData && confidenceData[rowIndex] ? confidenceData[rowIndex][header] : 1.0;
+                    const threshold = parseFloat(confidenceThreshold.value);
+                    const isLowConfidence = confidence < threshold;
+                    
+                    const cellClass = isLowConfidence ? 'low-confidence' : '';
+                    const confidencePercent = Math.round(confidence * 100);
+                    
+                    html += `<td class="${cellClass}" data-confidence="${confidence}" title="Confidence: ${confidencePercent}%">${value}</td>`;
                 });
                 html += '</tr>';
             });
             html += '</tbody>';
 
             previewTable.innerHTML = html;
+            
+            // Add tooltip functionality
+            addTooltipHandlers();
+        }
+        
+        function addTooltipHandlers() {
+            const cells = previewTable.querySelectorAll('td[data-confidence]');
+            let tooltip = null;
+            
+            cells.forEach(cell => {
+                cell.addEventListener('mouseenter', (e) => {
+                    const confidence = parseFloat(e.target.getAttribute('data-confidence'));
+                    const confidencePercent = Math.round(confidence * 100);
+                    
+                    if (!tooltip) {
+                        tooltip = document.createElement('div');
+                        tooltip.className = 'confidence-tooltip';
+                        document.body.appendChild(tooltip);
+                    }
+                    
+                    tooltip.textContent = `Confidence: ${confidencePercent}%`;
+                    tooltip.classList.add('show');
+                    
+                    const rect = e.target.getBoundingClientRect();
+                    tooltip.style.left = rect.left + 'px';
+                    tooltip.style.top = (rect.bottom + 5) + 'px';
+                });
+                
+                cell.addEventListener('mouseleave', () => {
+                    if (tooltip) {
+                        tooltip.classList.remove('show');
+                    }
+                });
+            });
         }
 
         extractBtn.addEventListener('click', async () => {
             const file = imageInput.files[0];
             const columns = columnsInput.value.trim();
             const instructions = instructionsInput.value.trim();
+            const selectedModel = modelSelect.value;
 
             if (!file) {
                 showStatus('Please select an image file', 'error');
                 return;
             }
 
-            if (!columns) {
-                showStatus('Please enter column headers', 'error');
-                return;
-            }
+            // Columns are now optional - if empty, will auto-detect headers
+
+            // If no model selected, it will use the default from environment
 
             try {
                 extractBtn.disabled = true;
-                showStatus('Extracting data from image...', 'loading');
+                const modelMessage = selectedModel ? `using ${selectedModel}` : 'using default model';
+                const modeMessage = columns.trim() ? 'with specified headers' : 'with auto-detected headers';
+                showStatus(`Processing image and extracting CSV data ${modeMessage} ${modelMessage}...`, 'loading');
 
                 const base64 = await fileToBase64(file);
 
@@ -321,7 +465,7 @@
                         image: base64,
                         columns: columns,
                         instructions: instructions,
-                        ollama_host: currentOllamaHost
+                        model: selectedModel || undefined // Don't send if empty
                     })
                 });
 
@@ -335,11 +479,11 @@
                 
                 // Show preview
                 jsonPreview.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
-                renderTable(result.data);
+                renderTable(result.data, result.confidence);
                 preview.style.display = 'block';
                 
                 saveBtn.disabled = false;
-                showStatus(`Extracted ${result.data ? result.data.length : 0} rows`, 'success');
+                showStatus(`Successfully processed image and extracted ${result.data ? result.data.length : 0} rows`, 'success');
 
             } catch (error) {
                 showStatus(`Error: ${error.message}`, 'error');
@@ -388,6 +532,17 @@
             window.open('/download', '_blank');
         });
 
+        clearBtn.addEventListener('click', () => {
+            // Clear extracted data and preview, but keep form fields
+            extractedData = null;
+            preview.style.display = 'none';
+            jsonPreview.innerHTML = '';
+            previewTable.innerHTML = '';
+            saveBtn.disabled = true;
+            clearStatus();
+            showStatus('Results cleared. Ready for new extraction.', 'success');
+        });
+
         testConnection.addEventListener('click', async () => {
             const host = customHost.value.trim();
             if (!host) {
@@ -398,8 +553,40 @@
             testConnection.disabled = true;
             statusText.textContent = 'Testing connection...';
             
-            await checkOllamaStatus(host);
+            try {
+                const response = await fetch(`/ollama-status?host=${encodeURIComponent(host)}`);
+                const result = await response.json();
+                
+                ollamaStatus.className = `ollama-status status-${result.status === 'running' ? 'running' : 'offline'}`;
+                statusText.textContent = result.message;
+                
+                if (result.status === 'running') {
+                    ollamaConfig.style.display = 'none';
+                    extractBtn.disabled = false;
+                    await loadModels();
+                } else {
+                    ollamaConfig.style.display = 'block';
+                    extractBtn.disabled = true;
+                    modelSelect.innerHTML = '<option value="">Ollama not running</option>';
+                }
+            } catch (error) {
+                ollamaStatus.className = 'ollama-status status-offline';
+                statusText.textContent = 'Failed to check Ollama status';
+                ollamaConfig.style.display = 'block';
+                extractBtn.disabled = true;
+                modelSelect.innerHTML = '<option value="">Connection failed</option>';
+            }
+            
             testConnection.disabled = false;
+        });
+
+        // Update threshold display
+        confidenceThreshold.addEventListener('input', () => {
+            thresholdValue.textContent = `(${confidenceThreshold.value})`;
+            // Re-render table if data exists to update highlighting
+            if (extractedData && extractedData.data) {
+                renderTable(extractedData.data, extractedData.confidence);
+            }
         });
 
         // Check Ollama status on page load
