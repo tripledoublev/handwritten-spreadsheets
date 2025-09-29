@@ -11,7 +11,7 @@ Create a .env file in the project root with these variables to configure
 external Ollama endpoints with authentication.
 """
 
-from flask import Flask, request, jsonify, send_file, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_file
 import ollama
 import json
 import csv
@@ -246,7 +246,7 @@ Return ONLY valid JSON in this format:
 
 @app.route('/')
 def index():
-    return send_from_directory('static', 'index.html')
+    return render_template('index.html', ollama_host=OLLAMA_HOST)
 
 @app.route('/ollama-status')
 def ollama_status():
@@ -447,4 +447,5 @@ def download():
         return jsonify({'error': 'No CSV file found'}), 404
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    HOST = os.getenv("HOST", "127.0.0.1")
+    app.run(debug=True, host=HOST)
