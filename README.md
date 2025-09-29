@@ -5,10 +5,13 @@ Convert handwritten spreadsheet images to structured CSV data using AI vision mo
 ## What it does?
 
 - **Image Upload**: Support for various image formats (PNG, JPG, etc.)
-- **AI-Powered Extraction**: Uses Ollama's llama3.2-vision model for accurate text recognition
-- **Custom Column Mapping**: Define your own spreadsheet headers
+- **AI-Powered Extraction**: Uses Ollama vision models for accurate text recognition
+- **Model Selection**: Choose from available Ollama models for optimal performance
+- **Confidence Scoring**: Get confidence scores for each extracted cell to identify uncertain data
+- **Auto-Detect Headers**: Automatically detect column headers from the image
+- **Custom Column Mapping**: Define your own spreadsheet headers when needed
 - **Optional Instructions**: Provide additional context for better extraction
-- **Live Preview**: See extracted data before saving
+- **Live Preview**: See extracted data with confidence highlighting before saving
 - **CSV Export**: Save and download results as CSV files
 - **Ollama Integration**: Built-in status checking and custom endpoint configuration
 
@@ -17,9 +20,9 @@ Convert handwritten spreadsheet images to structured CSV data using AI vision mo
 ### Prerequisites
 
 1. **Python 3.7+**
-2. **Ollama** with llama3.2-vision model
+2. **Ollama** with a vision model
    - [Download Ollama](https://ollama.com/download)
-   - Install vision model: `ollama pull llama3.2-vision`
+   - Install a vision model: `ollama pull qwen2.5vl:7b` (recommended) or `ollama pull llama3.2-vision`
 
 ### Installation
 
@@ -49,15 +52,31 @@ Convert handwritten spreadsheet images to structured CSV data using AI vision mo
 ## Usage
 
 1. **Check Ollama Status**: The app will automatically detect if Ollama is running
-2. **Upload Image**: Select a photo of your handwritten spreadsheet
-3. **Define Headers**: Enter column names separated by commas (e.g., "name,email,phone,notes")
-4. **Add Instructions** (optional): Provide specific guidance for extraction
-5. **Extract Data**: Click "Extract Data" to process the image
-6. **Preview Results**: Review the extracted data in JSON and table format
-7. **Save to CSV**: Click "Save Rows to CSV" to append data to your CSV file
-8. **Download**: Use "Download CSV" to get your complete dataset
+2. **Select Model**: Choose from available Ollama models (defaults to qwen2.5vl:7b)
+3. **Upload Image**: Select a photo of your handwritten spreadsheet
+4. **Define Headers** (optional): Enter column names separated by commas (e.g., "name,email,phone,notes")
+   - **Auto-detect mode**: Leave empty to automatically detect headers from the image
+   - **Specify mode**: Enter column names to force specific headers
+5. **Set Confidence Threshold**: Adjust the threshold for highlighting uncertain data (default: 0.7)
+6. **Add Instructions** (optional): Provide specific guidance for extraction
+7. **Extract Data**: Click "Extract Data" to process the image
+8. **Preview Results**: Review the extracted data with confidence scores and highlighting
+9. **Save to CSV**: Click "Save Rows to CSV" to append data to your CSV file
+10. **Download**: Use "Download CSV" to get your complete dataset
 
 ## Configuration
+
+### Environment Variables
+
+Create a `.env` file in the project root to configure external Ollama endpoints:
+
+```bash
+# Ollama server configuration
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_USERNAME=your_username
+OLLAMA_PASSWORD=your_password
+OLLAMA_MODEL=qwen2.5vl:7b
+```
 
 ### Custom Ollama Endpoint
 
@@ -66,6 +85,13 @@ If Ollama is running on a different host/port:
 2. Click to reveal the custom endpoint configuration
 3. Enter your Ollama URL (e.g., `http://192.168.1.123:11434`)
 4. Click "Test Connection" to verify
+
+### Model Selection
+
+- **Default Model**: The app uses `qwen2.5vl:7b` by default (configurable via `OLLAMA_MODEL`)
+- **Model Dropdown**: Select from available models in the web interface
+- **Model Information**: Each model shows its size and current status
+- **Performance**: Different models may have varying accuracy and speed
 
 ### File Structure
 
@@ -85,7 +111,8 @@ handwritten-spreadsheets/
 
 - `GET /` - Serve web interface
 - `GET /ollama-status` - Check Ollama connectivity
-- `POST /extract` - Process image and extract data
+- `GET /ollama-models` - Get list of available Ollama models
+- `POST /extract` - Process image and extract data with confidence scores
 - `POST /save` - Save extracted data to CSV
 - `GET /download` - Download current CSV file
 
@@ -96,19 +123,27 @@ handwritten-spreadsheets/
 - **Consistent Format**: Maintain regular spacing and alignment
 - **Column Headers**: Be specific with column names for better mapping
 - **Additional Instructions**: Mention any special formatting or context
+- **Model Selection**: Try different models to find the best performance for your handwriting style
+- **Confidence Scores**: Review highlighted cells (low confidence) and verify accuracy
+- **Confidence Threshold**: Adjust the threshold (0.7 default) to highlight more or fewer uncertain cells
+- **Auto-detect vs Specify**: Use auto-detect for well-structured tables, specify headers for complex layouts
 
 ## Troubleshooting
 
 ### Ollama Connection Issues
 - Ensure Ollama is installed and running (`ollama serve`)
-- Check if llama3.2-vision model is available (`ollama list`)
+- Check if a vision model is available (`ollama list`)
 - Verify firewall settings if using remote Ollama instance
+- Check environment variables in `.env` file for custom endpoints
 
 ### Extraction Problems
 - Try providing more specific column headers
 - Add instructions about handwriting style or format
 - Ensure image is clear and well-lit
 - Check that all text is visible in the uploaded image
+- Try different models for better accuracy
+- Review confidence scores to identify problematic areas
+- Use auto-detect mode for well-structured tables
 
 ### CSV Output Issues
 - Check the `data/` directory for the results.csv file
