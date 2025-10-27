@@ -209,16 +209,18 @@
         </div>
         
         <div class="form-group">
-            <label for="imageInput">Upload Spreadsheet Image:</label>
-            <input type="file" id="imageInput" accept="image/*" required>
+            <label for="imageInput">Upload Spreadsheet Images (multiple files supported):</label>
+            <input type="file" id="imageInput" accept="image/*" multiple required>
+            <div id="imageList" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
         </div>
         
         <div class="form-group">
-            <label for="columnsInput">Spreadsheet Headers (comma-separated, optional):</label>
-            <input type="text" id="columnsInput" placeholder="name,email,phone,notes (leave empty to auto-detect)">
+            <label for="columnsInput">Spreadsheet Headers (comma-separated, necessary for proper column ordering):</label>
+            <input type="text" id="columnsInput" placeholder="unit,name,personal email,personal #,languages,support for association,notes">
             <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                <strong>Auto-detect mode:</strong> Leave empty to automatically detect headers from the image<br>
-                <strong>Specify mode:</strong> Enter column names to force specific headers
+                <strong>Required for ordering:</strong> Specify the exact column order you want in the final CSV<br>
+                <strong>Example:</strong> unit,name,personal email,personal #,languages,notes<br>
+                <strong>Note:</strong> Column names will be matched case-insensitively to the extracted data
             </div>
         </div>
         
@@ -248,14 +250,13 @@
         
         <button id="extractBtn">Extract Data</button>
         <button id="clearBtn" class="clear-btn">Clear Results</button>
-        <button id="saveBtn" class="save-btn" disabled>Save Rows to CSV</button>
-        <button id="downloadBtn" class="download-btn">Download CSV</button>
+        <button id="downloadBtn" class="download-btn" disabled>Download CSV</button>
+        <button onclick="window.location.href='/logout'" style="background-color: #6c757d; margin-top: 10px;">Logout</button>
         
         <div id="status"></div>
         
         <div id="preview">
             <h3>Preview:</h3>
-            <div id="jsonPreview"></div>
             <table id="previewTable"></table>
         </div>
     </div>
@@ -269,11 +270,9 @@
         const instructionsInput = document.getElementById('instructionsInput');
         const extractBtn = document.getElementById('extractBtn');
         const clearBtn = document.getElementById('clearBtn');
-        const saveBtn = document.getElementById('saveBtn');
         const downloadBtn = document.getElementById('downloadBtn');
         const status = document.getElementById('status');
         const preview = document.getElementById('preview');
-        const jsonPreview = document.getElementById('jsonPreview');
         const previewTable = document.getElementById('previewTable');
         const ollamaStatus = document.getElementById('ollamaStatus');
         const statusText = document.getElementById('statusText');
@@ -283,6 +282,7 @@
         const modelSelect = document.getElementById('modelSelect');
         const confidenceThreshold = document.getElementById('confidenceThreshold');
         const thresholdValue = document.getElementById('thresholdValue');
+        const imageList = document.getElementById('imageList');
 
         function showStatus(message, type = 'info') {
             status.innerHTML = `<div class="${type}">${message}</div>`;
@@ -420,9 +420,25 @@
                     tooltip.textContent = `Confidence: ${confidencePercent}%`;
                     tooltip.classList.add('show');
                     
+                    // Position tooltip relative to cell, accounting for scroll
                     const rect = e.target.getBoundingClientRect();
-                    tooltip.style.left = rect.left + 'px';
-                    tooltip.style.top = (rect.bottom + 5) + 'px';
+                    const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+                    const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+                    
+                    tooltip.style.left = (rect.left + scrollX) + 'px';
+                    tooltip.style.top = (rect.bottom + scrollY + 5) + 'px';
+                });
+                
+                cell.addEventListener('mousemove', (e) => {
+                    // Update position on mouse move to follow the cell
+                    if (tooltip && tooltip.classList.contains('show')) {
+                        const rect = e.target.getBoundingClientRect();
+                        const scrollX = window.pageXOffset || document.documentElement.scrollLeft;
+                        const scrollY = window.pageYOffset || document.documentElement.scrollTop;
+                        
+                        tooltip.style.left = (rect.left + scrollX) + 'px';
+                        tooltip.style.top = (rect.bottom + scrollY + 5) + 'px';
+                    }
                 });
                 
                 cell.addEventListener('mouseleave', () => {
@@ -433,112 +449,189 @@
             });
         }
 
+        // Show image list when files are selected
+        imageInput.addEventListener('change', () => {
+            const files = imageInput.files;
+            if (files.length > 0) {
+                let fileList = `<strong>${files.length} image(s) selected:</strong><br>`;
+                for (let i = 0; i < files.length; i++) {
+                    fileList += `${i + 1}. ${files[i].name}<br>`;
+                }
+                imageList.innerHTML = fileList;
+            } else {
+                imageList.innerHTML = '';
+            }
+        });
+
         extractBtn.addEventListener('click', async () => {
-            const file = imageInput.files[0];
+            const files = imageInput.files;
             const columns = columnsInput.value.trim();
             const instructions = instructionsInput.value.trim();
             const selectedModel = modelSelect.value;
 
-            if (!file) {
-                showStatus('Please select an image file', 'error');
+            if (!files || files.length === 0) {
+                showStatus('Please select at least one image file', 'error');
                 return;
             }
-
-            // Columns are now optional - if empty, will auto-detect headers
-
-            // If no model selected, it will use the default from environment
 
             try {
                 extractBtn.disabled = true;
                 const modelMessage = selectedModel ? `using ${selectedModel}` : 'using default model';
                 const modeMessage = columns.trim() ? 'with specified headers' : 'with auto-detected headers';
-                showStatus(`Processing image and extracting CSV data ${modeMessage} ${modelMessage}...`, 'loading');
+                
+                if (files.length === 1) {
+                    // Single image - use original endpoint
+                    showStatus(`Processing image and extracting CSV data ${modeMessage} ${modelMessage}...`, 'loading');
 
-                const base64 = await fileToBase64(file);
+                    const base64 = await fileToBase64(files[0]);
 
-                const response = await fetch('/extract', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        image: base64,
-                        columns: columns,
-                        instructions: instructions,
-                        model: selectedModel || undefined // Don't send if empty
-                    })
-                });
+                    const response = await fetch('/extract', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            image: base64,
+                            columns: columns,
+                            instructions: instructions,
+                            model: selectedModel || undefined
+                        })
+                    });
 
-                const result = await response.json();
+                    const result = await response.json();
 
-                if (!response.ok) {
-                    throw new Error(result.error || 'Failed to extract data');
+                    if (!response.ok) {
+                        throw new Error(result.error || 'Failed to extract data');
+                    }
+
+                    extractedData = result;
+                    
+                    // Debug: Log the keys to see order
+                    if (result.data && result.data.length > 0) {
+                        console.log('Keys in first row:', Object.keys(result.data[0]));
+                    }
+                    
+                    // Show preview
+                    renderTable(result.data, result.confidence);
+                    preview.style.display = 'block';
+                    
+                    downloadBtn.disabled = false;
+                    showStatus(`Successfully processed image and extracted ${result.data ? result.data.length : 0} rows`, 'success');
+
+                } else {
+                    // Multiple images - use new endpoint
+                    showStatus(`Processing ${files.length} images...`, 'loading');
+
+                    // Convert all files to base64
+                    const imagesBase64 = [];
+                    for (let i = 0; i < files.length; i++) {
+                        const base64 = await fileToBase64(files[i]);
+                        imagesBase64.push(base64);
+                        showStatus(`Processing image ${i + 1} of ${files.length}...`, 'loading');
+                    }
+
+                    // Send all images to the multiple images endpoint
+                    const response = await fetch('/extract-multiple', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            images: imagesBase64,
+                            columns: columns,
+                            instructions: instructions,
+                            model: selectedModel || undefined
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(result.error || 'Failed to extract data');
+                    }
+
+                    // Show errors if any
+                    if (result.errors && result.errors.length > 0) {
+                        showStatus(`Partially successful: ${result.images_processed}/${files.length} images processed. Errors: ${result.errors.join('; ')}`, 'error');
+                    }
+
+                    extractedData = result;
+                    
+                    // Debug: Log the keys to see order
+                    if (result.data && result.data.length > 0) {
+                        console.log('Keys in first row:', Object.keys(result.data[0]));
+                    }
+                    
+                    // Show preview
+                    renderTable(result.data, result.confidence);
+                    preview.style.display = 'block';
+                    
+                    downloadBtn.disabled = false;
+                    showStatus(`Successfully processed ${result.images_processed} images and extracted ${result.total_rows} rows`, 'success');
                 }
-
-                extractedData = result;
-                
-                // Show preview
-                jsonPreview.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
-                renderTable(result.data, result.confidence);
-                preview.style.display = 'block';
-                
-                saveBtn.disabled = false;
-                showStatus(`Successfully processed image and extracted ${result.data ? result.data.length : 0} rows`, 'success');
 
             } catch (error) {
                 showStatus(`Error: ${error.message}`, 'error');
                 extractedData = null;
-                saveBtn.disabled = true;
+                downloadBtn.disabled = true;
                 preview.style.display = 'none';
             } finally {
                 extractBtn.disabled = false;
             }
         });
 
-        saveBtn.addEventListener('click', async () => {
+        downloadBtn.addEventListener('click', async () => {
             if (!extractedData || !extractedData.data) {
-                showStatus('No data to save', 'error');
+                showStatus('No data to download', 'error');
                 return;
             }
 
             try {
-                saveBtn.disabled = true;
-                showStatus('Saving to CSV...', 'loading');
+                downloadBtn.disabled = true;
+                showStatus('Generating CSV...', 'loading');
 
-                const response = await fetch('/save', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(extractedData)
+                // Convert data to CSV
+                const headers = Object.keys(extractedData.data[0]);
+                let csvContent = headers.join(',') + '\n';
+
+                extractedData.data.forEach(row => {
+                    const values = headers.map(header => {
+                        const value = row[header] || '';
+                        // Escape quotes and wrap in quotes if contains comma or quote
+                        if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+                            return '"' + value.replace(/"/g, '""') + '"';
+                        }
+                        return value;
+                    });
+                    csvContent += values.join(',') + '\n';
                 });
 
-                const result = await response.json();
+                // Create blob and download
+                const blob = new Blob([csvContent], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'results.csv';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
 
-                if (!response.ok) {
-                    throw new Error(result.error || 'Failed to save data');
-                }
-
-                showStatus(result.message, 'success');
+                showStatus('CSV downloaded successfully', 'success');
 
             } catch (error) {
                 showStatus(`Error: ${error.message}`, 'error');
             } finally {
-                saveBtn.disabled = false;
+                downloadBtn.disabled = false;
             }
-        });
-
-        downloadBtn.addEventListener('click', () => {
-            window.open('/download', '_blank');
         });
 
         clearBtn.addEventListener('click', () => {
             // Clear extracted data and preview, but keep form fields
             extractedData = null;
             preview.style.display = 'none';
-            jsonPreview.innerHTML = '';
             previewTable.innerHTML = '';
-            saveBtn.disabled = true;
+            downloadBtn.disabled = true;
             clearStatus();
             showStatus('Results cleared. Ready for new extraction.', 'success');
         });
