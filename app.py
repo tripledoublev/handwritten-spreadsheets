@@ -37,12 +37,11 @@ app.secret_key = os.getenv('SECRET_KEY', os.urandom(24).hex())
 # Password from environment variable
 APP_PASSWORD = os.getenv('APP_PASSWORD', 'change-me-in-production')
 
-# Configure logging
+# Configure logging (only to console for Vercel compatibility)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('app.log'),
         logging.StreamHandler()
     ]
 )
