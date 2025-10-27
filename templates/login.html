@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Handwritten Spreadsheet to CSV</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 100%;
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        input[type="password"]:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+        button {
+            width: 100%;
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        .error.show {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h1>📋 Handwritten Spreadsheet to CSV</h1>
+        <p class="subtitle">Enter password to access the application</p>
+        
+        <div id="errorMessage" class="error"></div>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required autofocus>
+            </div>
+            <button type="submit" id="loginBtn">Login</button>
+        </form>
+    </div>
+
+    <script>
+        const loginForm = document.getElementById('loginForm');
+        const passwordInput = document.getElementById('password');
+        const loginBtn = document.getElementById('loginBtn');
+        const errorMessage = document.getElementById('errorMessage');
+
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const password = passwordInput.value;
+            
+            if (!password) {
+                showError('Please enter a password');
+                return;
+            }
+
+            try {
+                loginBtn.disabled = true;
+                loginBtn.textContent = 'Logging in...';
+                errorMessage.classList.remove('show');
+
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ password: password })
+                });
+
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // Redirect to main page
+                    window.location.href = '/';
+                } else {
+                    showError(result.error || 'Invalid password. Please try again.');
+                    passwordInput.value = '';
+                    passwordInput.focus();
+                }
+
+            } catch (error) {
+                showError('Connection error. Please try again.');
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = 'Login';
+            }
+        });
+
+        function showError(message) {
+            errorMessage.textContent = message;
+            errorMessage.classList.add('show');
+        }
+    </script>
+</body>
+</html>
+
