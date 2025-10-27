@@ -677,3 +677,6 @@ def download():
 if __name__ == '__main__':
     HOST = os.getenv("HOST", "127.0.0.1")
     app.run(debug=True, host=HOST)
+
+# Vercel serverless function handler
+app = app
