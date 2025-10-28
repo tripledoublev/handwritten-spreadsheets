@@ -211,6 +211,9 @@
         <div class="form-group">
             <label for="imageInput">Upload Spreadsheet Images (multiple files supported):</label>
             <input type="file" id="imageInput" accept="image/*" multiple required>
+            <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                Images will be automatically compressed to WebP format for optimal upload size. Maximum 20MB per image.
+            </div>
             <div id="imageList" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
         </div>
         
@@ -299,6 +302,117 @@
                 reader.onload = () => resolve(reader.result);
                 reader.onerror = error => reject(error);
             });
+        }
+
+        /**
+         * Format bytes to human-readable size
+         */
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        /**
+         * Compress an image file to WebP format
+         * Targets max 3MB to stay under Vercel's 4.5MB limit
+         * Falls back to original file if compression fails
+         */
+        async function compressImage(file) {
+            const originalSize = file.size;
+            const originalSizeMB = originalSize / 1024 / 1024;
+
+            // If file is already small enough, skip compression
+            if (originalSize < 3 * 1024 * 1024) {
+                console.log(`Image ${file.name} is already small enough (${formatBytes(originalSize)}), skipping compression`);
+                return {
+                    file: file,
+                    originalSize: originalSize,
+                    compressedSize: originalSize,
+                    skipped: true
+                };
+            }
+
+            // Warn if image is extremely large (unlikely to compress enough)
+            if (originalSize > 20 * 1024 * 1024) {
+                console.warn(`Image ${file.name} is too large (${formatBytes(originalSize)}). Attempting compression anyway...`);
+            }
+
+            try {
+                const options = {
+                    maxSizeMB: 3,                    // Target max 3MB (safe buffer under 4.5MB)
+                    maxWidthOrHeight: 2000,          // Maintain good quality for OCR
+                    useWebWorker: false,             // Disabled for Vercel compatibility (worker script URL may not resolve)
+                    fileType: 'image/webp',          // WebP for best compression
+                    initialQuality: 0.85             // Good balance of quality and size
+                };
+
+                console.log(`Compressing ${file.name} from ${formatBytes(originalSize)}...`);
+                const compressedFile = await imageCompression(file, options);
+                const compressedSize = compressedFile.size;
+
+                // Verify compressed size is acceptable
+                if (compressedSize > 4 * 1024 * 1024) {
+                    console.warn(`Compressed image ${file.name} is still too large (${formatBytes(compressedSize)}). Using original file.`);
+                    return {
+                        file: file,
+                        originalSize: originalSize,
+                        compressedSize: originalSize,
+                        skipped: true,
+                        fallback: true
+                    };
+                }
+
+                console.log(`Compressed ${file.name}: ${formatBytes(originalSize)} → ${formatBytes(compressedSize)} (${Math.round((1 - compressedSize/originalSize) * 100)}% reduction)`);
+
+                return {
+                    file: compressedFile,
+                    originalSize: originalSize,
+                    compressedSize: compressedSize,
+                    skipped: false
+                };
+            } catch (error) {
+                console.warn(`Compression failed for ${file.name}, using original file:`, error);
+                // Fallback to original file instead of throwing error
+                return {
+                    file: file,
+                    originalSize: originalSize,
+                    compressedSize: originalSize,
+                    skipped: true,
+                    fallback: true,
+                    error: error.message
+                };
+            }
+        }
+
+        /**
+         * Compress multiple images with progress feedback
+         */
+        async function compressImages(files, progressCallback) {
+            const results = [];
+            let totalOriginalSize = 0;
+            let totalCompressedSize = 0;
+
+            for (let i = 0; i < files.length; i++) {
+                if (progressCallback) {
+                    progressCallback(i + 1, files.length, files[i].name);
+                }
+
+                const result = await compressImage(files[i]);
+                results.push(result);
+
+                totalOriginalSize += result.originalSize;
+                totalCompressedSize += result.compressedSize;
+            }
+
+            return {
+                results: results,
+                totalOriginalSize: totalOriginalSize,
+                totalCompressedSize: totalCompressedSize,
+                compressionRatio: totalOriginalSize > 0 ? (1 - totalCompressedSize/totalOriginalSize) : 0
+            };
         }
 
         async function loadModels() {
@@ -478,12 +592,30 @@
                 extractBtn.disabled = true;
                 const modelMessage = selectedModel ? `using ${selectedModel}` : 'using default model';
                 const modeMessage = columns.trim() ? 'with specified headers' : 'with auto-detected headers';
-                
-                if (files.length === 1) {
+
+                // Step 1: Compress images if needed
+                let compressedFiles = [];
+                const filesArray = Array.from(files);
+
+                showStatus(`Compressing ${filesArray.length} image(s)...`, 'loading');
+                const compressionResult = await compressImages(filesArray, (current, total, filename) => {
+                    showStatus(`Compressing image ${current} of ${total}: ${filename}...`, 'loading');
+                });
+
+                // Extract compressed files
+                compressedFiles = compressionResult.results.map(r => r.file);
+
+                // Show compression summary
+                if (compressionResult.compressionRatio > 0) {
+                    const savedSize = compressionResult.totalOriginalSize - compressionResult.totalCompressedSize;
+                    console.log(`Compression complete: ${formatBytes(compressionResult.totalOriginalSize)} → ${formatBytes(compressionResult.totalCompressedSize)} (saved ${formatBytes(savedSize)}, ${Math.round(compressionResult.compressionRatio * 100)}% reduction)`);
+                }
+
+                if (compressedFiles.length === 1) {
                     // Single image - use original endpoint
                     showStatus(`Processing image and extracting CSV data ${modeMessage} ${modelMessage}...`, 'loading');
 
-                    const base64 = await fileToBase64(files[0]);
+                    const base64 = await fileToBase64(compressedFiles[0]);
 
                     const response = await fetch('/extract', {
                         method: 'POST',
@@ -505,30 +637,32 @@
                     }
 
                     extractedData = result;
-                    
+
                     // Debug: Log the keys to see order
                     if (result.data && result.data.length > 0) {
                         console.log('Keys in first row:', Object.keys(result.data[0]));
                     }
-                    
+
                     // Show preview
                     renderTable(result.data, result.confidence);
                     preview.style.display = 'block';
-                    
+
                     downloadBtn.disabled = false;
                     showStatus(`Successfully processed image and extracted ${result.data ? result.data.length : 0} rows`, 'success');
 
                 } else {
                     // Multiple images - use new endpoint
-                    showStatus(`Processing ${files.length} images...`, 'loading');
+                    showStatus(`Converting ${compressedFiles.length} images to base64...`, 'loading');
 
                     // Convert all files to base64
                     const imagesBase64 = [];
-                    for (let i = 0; i < files.length; i++) {
-                        const base64 = await fileToBase64(files[i]);
+                    for (let i = 0; i < compressedFiles.length; i++) {
+                        const base64 = await fileToBase64(compressedFiles[i]);
                         imagesBase64.push(base64);
-                        showStatus(`Processing image ${i + 1} of ${files.length}...`, 'loading');
+                        showStatus(`Converting image ${i + 1} of ${compressedFiles.length}...`, 'loading');
                     }
+
+                    showStatus(`Sending ${compressedFiles.length} images to server for processing...`, 'loading');
 
                     // Send all images to the multiple images endpoint
                     const response = await fetch('/extract-multiple', {
@@ -552,20 +686,20 @@
 
                     // Show errors if any
                     if (result.errors && result.errors.length > 0) {
-                        showStatus(`Partially successful: ${result.images_processed}/${files.length} images processed. Errors: ${result.errors.join('; ')}`, 'error');
+                        showStatus(`Partially successful: ${result.images_processed}/${compressedFiles.length} images processed. Errors: ${result.errors.join('; ')}`, 'error');
                     }
 
                     extractedData = result;
-                    
+
                     // Debug: Log the keys to see order
                     if (result.data && result.data.length > 0) {
                         console.log('Keys in first row:', Object.keys(result.data[0]));
                     }
-                    
+
                     // Show preview
                     renderTable(result.data, result.confidence);
                     preview.style.display = 'block';
-                    
+
                     downloadBtn.disabled = false;
                     showStatus(`Successfully processed ${result.images_processed} images and extracted ${result.total_rows} rows`, 'success');
                 }
@@ -687,5 +821,8 @@
             checkOllamaStatus();
         });
     </script>
+
+    <!-- Browser Image Compression Library (local) -->
+    <script src="/static/js/browser-image-compression.js"></script>
 </body>
 </html>
