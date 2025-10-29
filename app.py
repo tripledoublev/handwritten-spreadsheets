@@ -162,7 +162,7 @@ def reorder_columns(data_rows, confidence_rows, desired_order):
                 if desired_col in extracted_col_lower or extracted_col_lower in desired_col:
                     column_mapping[desired_col] = extracted_col
                     found = True
-                    logger.info(f"Fuzzy matched '{desired_col}' to '{extracted_col}'")
+                    logger.info("Fuzzy matched column successfully")
                     break
             
             if not found:
@@ -212,11 +212,11 @@ def reorder_columns(data_rows, confidence_rows, desired_order):
         reordered_data.append(new_row)
         reordered_confidence.append(new_confidence_row)
     
-    logger.info(f"Reordered columns to match specified order: {desired_order}")
+    logger.info(f"Reordered columns to match specified order ({len(desired_order)} columns)")
     
-    # Debug: Log the first row's keys to verify order
+    # Debug: Verify order without logging actual column names
     if reordered_data:
-        logger.info(f"First row keys after reordering: {list(reordered_data[0].keys())}")
+        logger.info(f"Reordering completed: {len(reordered_data[0].keys())} columns")
     
     return reordered_data, reordered_confidence
 
@@ -306,7 +306,7 @@ Rules:
     )
     
     content = response['message']['content'].strip()
-    logger.info(f"Single-step extraction response: {content}")
+    logger.info(f"Single-step extraction response received (length: {len(content)} chars)")
     
     # Extract JSON from response
     formatted_data = try_extract_json(content)
@@ -356,7 +356,10 @@ Return ONLY valid JSON in this format:
         formatted_data = try_extract_json(corrected_content)
     
     if formatted_data:
-        logger.info(f"Successfully extracted and formatted CSV data: {formatted_data}")
+        rows_count = len(formatted_data.get('data', []))
+        confidence_count = len(formatted_data.get('confidence', []))
+        columns_count = len(formatted_data.get('data', [{}])[0]) if formatted_data.get('data') else 0
+        logger.info(f"Successfully extracted and formatted CSV data: {rows_count} rows, {columns_count} columns")
         return formatted_data
     else:
         raise Exception("Failed to extract and format data from image")
@@ -573,17 +576,17 @@ def extract_multiple():
                         formatted_data.get('confidence', []),
                         column_order
                     )
-                    # Debug: Check keys after reorder
-                    logger.info(f"After reorder, keys are: {list(reordered_data[0].keys()) if reordered_data else 'No data'}")
+                    # Debug: Check reorder completion without logging column names
+                    logger.info(f"After reorder: {len(reordered_data[0].keys()) if reordered_data else 0} columns")
                     formatted_data['data'] = reordered_data
                     formatted_data['confidence'] = reordered_confidence
                 else:
-                    # No reordering - log what we got
-                    logger.info(f"No reordering, keys are: {list(formatted_data['data'][0].keys()) if formatted_data['data'] else 'No data'}")
+                    # No reordering - log column count
+                    logger.info(f"No reordering: {len(formatted_data['data'][0].keys()) if formatted_data['data'] else 0} columns")
                 
                 # Append to combined results
-                # Debug: Check what we're appending
-                logger.info(f"Keys in formatted_data before append: {list(formatted_data['data'][0].keys()) if formatted_data['data'] else 'No data'}")
+                # Debug: Check column count before append
+                logger.info(f"Before append: {len(formatted_data['data'][0].keys()) if formatted_data['data'] else 0} columns")
                 all_data.extend(formatted_data['data'])
                 all_confidence.extend(formatted_data.get('confidence', []))
                 
@@ -604,9 +607,9 @@ def extract_multiple():
             'errors': errors
         }
         
-        # Debug: Log the keys of the first row to verify order is preserved
+        # Debug: Verify order is preserved without logging column names
         if all_data:
-            logger.info(f"First row keys in final response: {list(all_data[0].keys())}")
+            logger.info(f"Final response contains {len(all_data[0].keys())} columns")
         
         logger.info(f"Multiple image extraction completed - {len(all_data)} total rows extracted")
         
