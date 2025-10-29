@@ -659,11 +659,6 @@
 
                     extractedData = result;
 
-                    // Debug: Log the keys to see order
-                    if (result.data && result.data.length > 0) {
-                        console.log('Keys in first row:', Object.keys(result.data[0]));
-                    }
-
                     // Show preview
                     renderTable(result.data, result.confidence);
                     preview.style.display = 'block';
@@ -711,11 +706,6 @@
                     }
 
                     extractedData = result;
-
-                    // Debug: Log the keys to see order
-                    if (result.data && result.data.length > 0) {
-                        console.log('Keys in first row:', Object.keys(result.data[0]));
-                    }
 
                     // Show preview
                     renderTable(result.data, result.confidence);
