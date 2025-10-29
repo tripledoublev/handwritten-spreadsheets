@@ -23,6 +23,22 @@
             text-align: center;
             margin-bottom: 30px;
         }
+        .advanced-settings {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .advanced-settings summary {
+            color: #555;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 15px;
+        }
+        .advanced-settings[open] {
+            padding: 0 15px;
+        }
+        .advanced-settings[open] summary {
+            padding: 15px 0;
+        }
         .form-group {
             margin-bottom: 20px;
         }
@@ -85,6 +101,7 @@
             padding: 20px;
             background-color: #f8f9fa;
             border-radius: 4px;
+            overflow-x: scroll;
             display: none;
         }
         #previewTable {
@@ -197,17 +214,6 @@
     <div class="container">
         <h1>📋 Handwritten Spreadsheet to CSV</h1>
         
-        <div id="ollamaStatus" class="ollama-status">
-            <div><span class="status-indicator"></span><span id="statusText">Checking Ollama status...</span></div>
-            <div class="ollama-config" id="ollamaConfig" style="display: none;">
-                <input type="text" id="customHost" placeholder="{{ ollama_host }}" value="{{ ollama_host }}">
-                <button id="testConnection">Test Connection</button>
-                <div style="margin-top: 5px; font-size: 12px;">
-                    <a href="https://ollama.ai/download" target="_blank">Download Ollama</a> if not installed
-                </div>
-            </div>
-        </div>
-        
         <div class="form-group">
             <label for="imageInput">Upload Spreadsheet Images (multiple files supported):</label>
             <input type="file" id="imageInput" accept="image/*" multiple required>
@@ -216,40 +222,55 @@
             </div>
             <div id="imageList" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
         </div>
-        
-        <div class="form-group">
-            <label for="columnsInput">Spreadsheet Headers (comma-separated, necessary for proper column ordering):</label>
-            <input type="text" id="columnsInput" placeholder="unit,name,personal email,personal #,languages,support for association,notes">
-            <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                <strong>Required for ordering:</strong> Specify the exact column order you want in the final CSV<br>
-                <strong>Example:</strong> unit,name,personal email,personal #,languages,notes<br>
-                <strong>Note:</strong> Column names will be matched case-insensitively to the extracted data
+
+        <details class="advanced-settings">
+            <summary>Advanced Settings</summary>
+
+            <div id="ollamaStatus" class="ollama-status">
+                <div><span class="status-indicator"></span><span id="statusText">Checking Ollama status...</span></div>
+                <div class="ollama-config" id="ollamaConfig" style="display: none;">
+                    <input type="text" id="customHost" placeholder="{{ ollama_host }}" value="{{ ollama_host }}">
+                    <button id="testConnection">Test Connection</button>
+                </div>
             </div>
-        </div>
-        
-        <div class="form-group">
-            <label for="instructionsInput">Additional Instructions (optional):</label>
-            <textarea id="instructionsInput" placeholder="Any specific instructions for data extraction..."></textarea>
-        </div>
-        
-        <div class="form-group">
-            <label for="confidenceThreshold">Confidence Threshold:</label>
-            <input type="range" id="confidenceThreshold" min="0" max="1" step="0.05" value="0.7" style="width: 100%;">
-            <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                Cells with confidence below this threshold will be highlighted for review
-                <span id="thresholdValue">(0.7)</span>
+            
+            <div class="form-group">
+                <label for="columnsInput">Spreadsheet Headers (comma-separated):</label>
+                <input type="text" id="columnsInput">
+                <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                    If left unspecified, the model will attempt to automatically infer the headers.<br>
+                    If you want a different column ordering in the final CSV, specify it here.<br>
+                    <strong>Example:</strong> unit,name,personal email,personal #,languages,notes<br>
+                    <strong>Note:</strong> Column names will be matched case-insensitively to the extracted data
+                </div>
             </div>
-        </div>
-        
-        <div class="form-group">
-            <label for="modelSelect">Model:</label>
-            <select id="modelSelect" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
-                <option value="">Loading models...</option>
-            </select>
-            <div style="font-size: 12px; color: #666; margin-top: 5px;">
-                Select the model to use for OCR processing
+            
+            <div class="form-group">
+                <label for="instructionsInput">Additional Instructions (optional):</label>
+                <textarea id="instructionsInput" placeholder="Any specific instructions for data extraction..."></textarea>
             </div>
-        </div>
+            
+            <div class="form-group">
+                <label for="confidenceThreshold">Confidence Threshold:</label>
+                <input type="range" id="confidenceThreshold" min="0" max="1" step="0.05" value="0.7" style="width: 100%;">
+                <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                    Cells with confidence below this threshold will be highlighted for review.
+                    <span id="thresholdValue">(0.7)</span>
+                    <br>
+                    Depending on the model, these could be totally misleading.
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="modelSelect">Model:</label>
+                <select id="modelSelect" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; box-sizing: border-box;">
+                    <option value="">Loading models...</option>
+                </select>
+                <div style="font-size: 12px; color: #666; margin-top: 5px;">
+                    Select the model to use for OCR processing
+                </div>
+            </div>
+        </details>
         
         <button id="extractBtn">Extract Data</button>
         <button id="clearBtn" class="clear-btn">Clear Results</button>
