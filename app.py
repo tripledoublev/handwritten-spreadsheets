@@ -5,7 +5,7 @@ Environment Variables:
 - OLLAMA_HOST: Ollama server URL (default: http://localhost:11434)
 - OLLAMA_USERNAME: Basic auth username (optional)
 - OLLAMA_PASSWORD: Basic auth password (optional)
-- OLLAMA_MODEL: Model to use for OCR processing (default: llama3.2-vision)
+- OLLAMA_MODEL: Model to use for OCR processing (default: qwen3-vl:30b)
 
 Create a .env file in the project root with these variables to configure
 external Ollama endpoints with authentication.
@@ -19,11 +19,12 @@ import csv
 import os
 import base64
 import requests
-from io import StringIO
+from io import StringIO, BytesIO
 from datetime import datetime
 import logging
 from collections import OrderedDict
 from dotenv import load_dotenv
+from PIL import Image
 
 app = Flask(__name__)
 app.config['JSON_SORT_KEYS'] = False
@@ -47,11 +48,21 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Try to register HEIC support
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    HEIC_SUPPORT = True
+    logger.info("HEIC/HEIF support enabled via pillow-heif")
+except ImportError:
+    HEIC_SUPPORT = False
+    logger.warning("pillow-heif not available, HEIC conversion will be skipped")
+
 # Ollama configuration from environment variables
 OLLAMA_HOST = os.getenv('OLLAMA_HOST', 'http://localhost:11434')
 OLLAMA_USERNAME = os.getenv('OLLAMA_USERNAME', '')
 OLLAMA_PASSWORD = os.getenv('OLLAMA_PASSWORD', '')
-OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen2.5vl:7b')
+OLLAMA_MODEL = os.getenv('OLLAMA_MODEL', 'qwen3-vl:30b')
 
 # Authentication decorator
 def require_auth(f):
@@ -120,6 +131,56 @@ def try_extract_json(content):
         pass
     
     return None
+
+def convert_heic_to_jpeg(base64_data):
+    """Convert HEIC/HEIF image to JPEG format on server side with optimizations"""
+    if not HEIC_SUPPORT:
+        return None
+    
+    try:
+        # Decode base64
+        image_bytes = base64.b64decode(base64_data)
+        
+        # Try to open as HEIC
+        try:
+            image = Image.open(BytesIO(image_bytes))
+            # Check if it's HEIC/HEIF
+            if image.format not in ('HEIC', 'HEIF'):
+                return None
+        except Exception:
+            # Not a HEIC file or can't be opened
+            return None
+        
+        # Convert to RGB if necessary (HEIC might have other modes)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
+        
+        # Optimize: Resize if image is too large (OCR doesn't need full resolution)
+        # Max dimension of 2000px maintains good OCR quality while being much faster
+        max_dimension = 2000
+        if image.width > max_dimension or image.height > max_dimension:
+            # Calculate new size maintaining aspect ratio
+            original_size = (image.width, image.height)
+            ratio = min(max_dimension / image.width, max_dimension / image.height)
+            new_size = (int(image.width * ratio), int(image.height * ratio))
+            image = image.resize(new_size, Image.Resampling.LANCZOS)
+            logger.info(f"Resized HEIC image from {original_size[0]}x{original_size[1]} to {new_size[0]}x{new_size[1]} for faster processing")
+        
+        # Convert to JPEG in memory with optimized settings
+        # Quality 85 is good for OCR and much faster than 92
+        jpeg_buffer = BytesIO()
+        image.save(jpeg_buffer, format='JPEG', quality=85)
+        jpeg_bytes = jpeg_buffer.getvalue()
+        
+        # Re-encode to base64
+        jpeg_base64 = base64.b64encode(jpeg_bytes).decode('utf-8')
+        
+        logger.info(f"Successfully converted HEIC image to JPEG (original: {len(image_bytes)} bytes, JPEG: {len(jpeg_bytes)} bytes)")
+        return jpeg_base64
+        
+    except Exception as e:
+        logger.warning(f"Failed to convert HEIC image on server: {str(e)}")
+        return None
 
 def reorder_columns(data_rows, confidence_rows, desired_order):
     """
@@ -226,18 +287,14 @@ def extract_and_format_csv(image_data, columns, instructions, ollama_client, mod
     
     # We always use auto-detect mode now - let LLM find all columns
     # Column specification is only used for reordering at the end
-    column_list = []  # Empty - always auto-detect
-    auto_detect_mode = True
-    
-    if auto_detect_mode:
-        logger.info("Using auto-detect mode - will detect headers from image")
-        extraction_prompt = f"""Perform Optical Character Recognition (OCR) on this handwritten spreadsheet image and convert it directly to CSV format.
+    extraction_prompt = f"""Perform Optical Character Recognition (OCR) on this handwritten spreadsheet image and convert it directly to CSV format.
 
 Your task is to:
 1. Read and extract ALL text content from the image
 2. Identify table structure, rows, and columns
 3. Detect the header row and use those as column names
-4. Return properly formatted CSV data with confidence scores
+4. Clean and normalize email addresses by removing all spaces (e.g., "john smith 2000@gmail.com" → "johnsmith2000@gmail.com")
+5. Return properly formatted CSV data with confidence scores
 
 {f"Additional instructions: {instructions}" if instructions else ""}
 
@@ -254,38 +311,8 @@ Rules:
 - Extract text accurately from the handwritten content
 - Use the actual column headers found in the image
 - Clean and format the data appropriately
-- Provide confidence scores (0.0-1.0) for each cell based on text clarity and legibility
-- Higher scores (0.8+) for clear, well-formed text
-- Lower scores (0.5-0.7) for unclear, smudged, or ambiguous text
-- Very low scores (0.0-0.4) for illegible or missing text
-- Return ONLY the JSON object, no explanations"""
-    else:
-        logger.info(f"Using specify mode - forcing headers: {', '.join(column_list)}")
-        extraction_prompt = f"""Perform Optical Character Recognition (OCR) on this handwritten spreadsheet image and convert it directly to CSV format.
-
-Your task is to:
-1. Read and extract ALL text content from the image
-2. Identify table structure, rows, and columns
-3. Map the extracted data to the specified column names
-4. Return properly formatted CSV data with confidence scores
-
-Required columns: {', '.join(column_list)}
-{f"Additional instructions: {instructions}" if instructions else ""}
-
-Return ONLY valid JSON in this format:
-{{"data": [
-    {{"{column_list[0]}": "value1", "{column_list[1]}": "value2", "{column_list[2]}": "value3", "{column_list[3]}": "value4"}},
-    {{"{column_list[0]}": "value5", "{column_list[1]}": "value6", "{column_list[2]}": "value7", "{column_list[3]}": "value8"}}
-], "confidence": [
-    {{"{column_list[0]}": 0.95, "{column_list[1]}": 0.87, "{column_list[2]}": 0.92, "{column_list[3]}": 0.78}},
-    {{"{column_list[0]}": 0.89, "{column_list[1]}": 0.93, "{column_list[2]}": 0.85, "{column_list[3]}": 0.91}}
-]}}
-
-Rules:
-- Extract text accurately from the handwritten content
-- Map values to the specified column names exactly
-- Clean and format the data appropriately
-- Ensure all required columns are present
+- When extracting email addresses: remove ALL spaces, preserve them exactly as written otherwise - do not add extra periods or modify the email format
+- Email addresses must NOT contain spaces - remove any spaces that appear in handwritten email addresses (e.g., "jphn smith 5@gmail.com" should become "smithtom5@gmail.com")
 - Provide confidence scores (0.0-1.0) for each cell based on text clarity and legibility
 - Higher scores (0.8+) for clear, well-formed text
 - Lower scores (0.5-0.7) for unclear, smudged, or ambiguous text
@@ -313,8 +340,7 @@ Rules:
     if not formatted_data:
         logger.warning("Failed to parse extraction JSON, attempting correction...")
         
-        if auto_detect_mode:
-            correction_prompt = f"""The previous extraction response was not valid JSON. Please fix it.
+        correction_prompt = f"""The previous extraction response was not valid JSON. Please fix it.
 
 Previous response:
 {content}
@@ -327,22 +353,6 @@ Return ONLY valid JSON in this format (use the actual headers detected from the 
     {{"header1": 0.95, "header2": 0.87, "header3": 0.92, "header4": 0.78}},
     {{"header1": 0.89, "header2": 0.93, "header3": 0.85, "header4": 0.91}}
 ]}}"""
-        else:
-            correction_prompt = f"""The previous extraction response was not valid JSON. Please fix it.
-
-Required columns: {', '.join(column_list)}
-
-Previous response:
-{content}
-
-Return ONLY valid JSON in this format:
-{{"data": [
-    {{"{column_list[0]}": "value1", "{column_list[1]}": "value2", "{column_list[2]}": "value3", "{column_list[3]}": "value4"}},
-    {{"{column_list[0]}": "value5", "{column_list[1]}": "value6", "{column_list[2]}": "value7", "{column_list[3]}": "value8"}}
-], "confidence": [
-    {{"{column_list[0]}": 0.95, "{column_list[1]}": 0.87, "{column_list[2]}": 0.92, "{column_list[3]}": 0.78}},
-    {{"{column_list[0]}": 0.89, "{column_list[1]}": 0.93, "{column_list[2]}": 0.85, "{column_list[3]}": 0.91}}
-]}}"""
         
         correction_response = ollama_client.chat(
             model=model_to_use,
@@ -353,7 +363,10 @@ Return ONLY valid JSON in this format:
         )
         
         corrected_content = correction_response['message']['content'].strip()
+        logger.info(f"Correction response received (length: {len(corrected_content)} chars)")
         formatted_data = try_extract_json(corrected_content)
+        if not formatted_data:
+            logger.error(f"Correction also failed.")
     
     if formatted_data:
         rows_count = len(formatted_data.get('data', []))
@@ -565,6 +578,12 @@ def extract_multiple():
                 processed_image = image_data
                 if processed_image.startswith('data:image'):
                     processed_image = processed_image.split(',')[1]
+                
+                # Try to convert HEIC on server side if browser-side conversion failed
+                heic_converted = convert_heic_to_jpeg(processed_image)
+                if heic_converted:
+                    logger.info(f"Using server-side converted HEIC image for image {i + 1}")
+                    processed_image = heic_converted
                 
                 # Extract data from this image
                 formatted_data = extract_and_format_csv(processed_image, columns, instructions, ollama_client, selected_model)

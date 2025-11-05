@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Handwritten Spreadsheet to CSV</title>
+    <link rel="icon" href="data:image/svg+xml,&lt;svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22&gt;&lt;text y=%22.9em%22 font-size=%2290%22&gt;📋&lt;/text&gt;&lt;/svg&gt;">
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -226,9 +227,10 @@
         
         <div class="form-group">
             <label for="imageInput">Upload Spreadsheet Images (multiple files supported):</label>
-            <input type="file" id="imageInput" accept="image/*" multiple required>
+            <input type="file" id="imageInput" accept="image/*,.heic,.heif" multiple required>
             <div style="font-size: 12px; color: #666; margin-top: 5px;">
                 Images will be automatically compressed to WebP format for optimal upload size. Maximum 20MB per image.
+                HEIC/HEIF files from mobile devices will be automatically converted to JPG on the server.
             </div>
             <div id="imageList" style="margin-top: 10px; font-size: 14px; color: #666;"></div>
         </div>
@@ -336,6 +338,18 @@
         }
 
         /**
+         * Check if file is HEIC/HEIF format
+         */
+        function isHeicFile(file) {
+            const fileName = file.name.toLowerCase();
+            const mimeType = file.type.toLowerCase();
+            return fileName.endsWith('.heic') || 
+                   fileName.endsWith('.heif') || 
+                   mimeType === 'image/heic' || 
+                   mimeType === 'image/heif';
+        }
+
+        /**
          * Format bytes to human-readable size
          */
         function formatBytes(bytes) {
@@ -350,8 +364,21 @@
          * Compress an image file to WebP format
          * Targets max 3MB to stay under Vercel's 4.5MB limit
          * Falls back to original file if compression fails
+         * Note: HEIC files are handled server-side, not converted here
          */
         async function compressImage(file) {
+            // Skip compression for HEIC files - server will handle conversion
+            if (isHeicFile(file)) {
+                console.log(`Skipping client-side compression for HEIC file ${file.name} - server will handle conversion`);
+                return {
+                    file: file,
+                    originalSize: file.size,
+                    compressedSize: file.size,
+                    skipped: true,
+                    wasConverted: false
+                };
+            }
+            
             const originalSize = file.size;
             const originalSizeMB = originalSize / 1024 / 1024;
 
@@ -362,7 +389,8 @@
                     file: file,
                     originalSize: originalSize,
                     compressedSize: originalSize,
-                    skipped: true
+                    skipped: true,
+                    wasConverted: false
                 };
             }
 
@@ -392,7 +420,8 @@
                         originalSize: originalSize,
                         compressedSize: originalSize,
                         skipped: true,
-                        fallback: true
+                        fallback: true,
+                        wasConverted: false
                     };
                 }
 
@@ -402,7 +431,8 @@
                     file: compressedFile,
                     originalSize: originalSize,
                     compressedSize: compressedSize,
-                    skipped: false
+                    skipped: false,
+                    wasConverted: false
                 };
             } catch (error) {
                 console.warn(`Compression failed for ${file.name}, using original file:`, error);
@@ -413,6 +443,7 @@
                     compressedSize: originalSize,
                     skipped: true,
                     fallback: true,
+                    wasConverted: false,
                     error: error.message
                 };
             }
